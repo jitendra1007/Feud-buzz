@@ -7,18 +7,19 @@
   <style>
     body { margin:0; background:#071427; color:#fff; font-family:sans-serif; text-align:center; padding:20px; }
     .card { background:#0f223d; border-radius:12px; max-width:800px; margin:20px auto; padding:24px; }
-    .hidden { display:none; }
+    .hidden { display:none !important; } /* !important ensures hidden always wins */
     input { font-size:18px; padding:10px; margin:8px; border-radius:6px; border:1px solid #334e68; }
     button { font-size:20px; font-weight:bold; padding:12px 24px; border-radius:8px; border:none; cursor:pointer; background:#3b82f6; color:#fff; margin:10px; }
     .grid { display:flex; justify-content:space-around; margin:20px 0; }
     .team-panel { border:2px solid #334e68; border-radius:10px; padding:16px; width:40%; }
-    .qr-box { background:#fff; padding:10px; border-radius:8px; display:inline-block; margin:10px 0; }
+    .qr-box { background:#fff; padding:10px; border-radius:8px; display:inline-block; margin:10px 0; min-height:140px; min-width:140px; }
     .status-badge { font-weight:bold; padding:6px 12px; border-radius:6px; }
     .connected { background:#22c55e; color:#fff; }
     .waiting { background:#f59e0b; color:#000; }
     .winner-banner { font-size:42px; color:#facc15; font-weight:900; margin:20px 0; animation: pulse 0.5s infinite alternate; }
     @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.05); } }
-    /* Reconnect QR Modal */
+
+    /* Modal Overlay */
     .modal-overlay {
       position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85);
       display: flex; justify-content: center; align-items: center; z-index: 1000;
@@ -31,7 +32,7 @@
 </head>
 <body>
 
-  <!-- STEP A: Team Setup -->
+  <!-- STEP A: Team Setup (Screen 1) -->
   <div id="setup-view" class="card">
     <h2>Friendly Feud Setup</h2>
     <div><input id="team0-input" placeholder="Team 1 Name" value="LIONS" /></div>
@@ -39,7 +40,7 @@
     <button onclick="createRoom()">Create Room</button>
   </div>
 
-  <!-- STEP B: Pairing & Lobby -->
+  <!-- STEP B: Pairing & Lobby (Screen 2) -->
   <div id="lobby-view" class="card hidden">
     <h1>Room Code: <span id="room-code-display" style="color:#facc15;"></span></h1>
     <p>Scan your team QR code on your phone or go to the join link.</p>
@@ -60,7 +61,7 @@
     <button id="start-game-btn" disabled onclick="enterGame()" style="opacity:0.5;">Waiting for 2 Phones</button>
   </div>
 
-  <!-- STEP C: Active Game Board -->
+  <!-- STEP C: Active Game Board (Screen 3 - Arm Buzzer View) -->
   <div id="game-view" class="card hidden">
     <h2>Game Board</h2>
     <div id="winner-display" class="winner-banner">BUZZERS READY</div>
@@ -72,7 +73,7 @@
     </div>
   </div>
 
-  <!-- Reconnect QR Codes Modal (Hidden by default) -->
+  <!-- Reconnect QR Codes Modal (Only opens from Screen 3) -->
   <div id="qr-modal" class="modal-overlay hidden">
     <div class="modal-content">
       <h2>Scan to Reconnect Phone</h2>
@@ -125,7 +126,6 @@
       }
 
       if (msg.type === "LOCKED") {
-        // Look up custom name in teams array by team index, fallback to message payload
         const winnerTeamName = teams[msg.winner.team] || msg.winner.name;
         document.getElementById("winner-display").textContent = `${winnerTeamName.toUpperCase()} BUZZED FIRST!`;
         document.getElementById("winner-display").style.color = "#facc15";
@@ -137,15 +137,16 @@
       }
     };
 
-    // Render QRs pointing to the phone buzzer client
-    // NEW LINE (Works both locally and on GitHub Pages subpaths):
+    // Render lobby QRs
     const cleanPath = window.location.pathname.replace(/\/index\.html$|\/$/, "");
     const basePhoneUrl = window.location.origin + cleanPath + "/buzzer.html";
     const team0Url = `${basePhoneUrl}?room=${roomCode}&team=0&name=${encodeURIComponent(teams[0])}&color=%233b82f6`;
     const team1Url = `${basePhoneUrl}?room=${roomCode}&team=1&name=${encodeURIComponent(teams[1])}&color=%23ef4444`;
-    // Lobby QRs
-    new QRCode(document.getElementById("qr-0"), { text: team0Url, width: 150, height: 150 });
-    new QRCode(document.getElementById("qr-1"), { text: team1Url, width: 150, height: 150 });
+
+    document.getElementById("qr-0").innerHTML = "";
+    document.getElementById("qr-1").innerHTML = "";
+    new QRCode(document.getElementById("qr-0"), { text: team0Url, width: 140, height: 140 });
+    new QRCode(document.getElementById("qr-1"), { text: team1Url, width: 140, height: 140 });
   }
 
   function updateLobbyState(connected) {
@@ -185,40 +186,36 @@
   }
 
   function armBuzzers() {
-    ws.send(JSON.stringify({ type: "ARM_BUZZERS" }));
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "ARM_BUZZERS" }));
+    }
   }
 
   function resetBuzzers() {
-    // 1. Instantly update host UI without waiting for network lag
     document.getElementById("winner-display").textContent = "BUZZERS READY";
     document.getElementById("winner-display").style.color = "#fff";
-
-    // 2. Notify Cloudflare and all connected phones
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: "RESET_BUZZERS" }));
     }
   }
+
   function openQrModal() {
     const modal = document.getElementById("qr-modal");
     modal.classList.remove("hidden");
 
-    // Set team titles
     document.getElementById("modal-t0-title").textContent = teams[0];
     document.getElementById("modal-t1-title").textContent = teams[1];
 
-    // Clear previous QR contents
     const qrBox0 = document.getElementById("modal-qr-0");
     const qrBox1 = document.getElementById("modal-qr-1");
     qrBox0.innerHTML = "";
     qrBox1.innerHTML = "";
 
-    // Generate URLs
     const cleanPath = window.location.pathname.replace(/\/index\.html$|\/$/, "");
     const basePhoneUrl = window.location.origin + cleanPath + "/buzzer.html";
     const team0Url = `${basePhoneUrl}?room=${roomCode}&team=0&name=${encodeURIComponent(teams[0])}&color=%233b82f6`;
     const team1Url = `${basePhoneUrl}?room=${roomCode}&team=1&name=${encodeURIComponent(teams[1])}&color=%23ef4444`;
 
-    // Render QRs now that the modal is visible
     new QRCode(qrBox0, { text: team0Url, width: 140, height: 140 });
     new QRCode(qrBox1, { text: team1Url, width: 140, height: 140 });
   }
@@ -226,7 +223,7 @@
   function closeQrModal() {
     document.getElementById("qr-modal").classList.add("hidden");
   }
-  
+
   function goHome() {
     resetBuzzers();
     closeQrModal();
@@ -236,7 +233,6 @@
       ws = null;
     }
 
-    // Clear all QR code containers
     document.getElementById("qr-0").innerHTML = "";
     document.getElementById("qr-1").innerHTML = "";
     document.getElementById("modal-qr-0").innerHTML = "";
