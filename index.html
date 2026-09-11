@@ -84,14 +84,25 @@
     ws.onmessage = (event) => {
       const msg = JSON.parse(event.data);
       if (msg.type === "ROOM_STATE") updateLobbyState(msg.connectedTeams);
-      if (msg.type === "LOCKED") {
-        document.getElementById("winner-display").textContent = `${msg.winner.name} BUZZED FIRST!`;
+      
+      if (msg.type === "START_COUNTDOWN") {
+        document.getElementById("winner-display").textContent = "COUNTDOWN STARTED...";
+        document.getElementById("winner-display").style.color = "#eab308";
       }
+
       if (msg.type === "ARMED") {
         document.getElementById("winner-display").textContent = "BUZZERS ARMED!";
+        document.getElementById("winner-display").style.color = "#22c55e";
       }
+
+      if (msg.type === "LOCKED") {
+        document.getElementById("winner-display").textContent = `${msg.winner.name} BUZZED FIRST!`;
+        document.getElementById("winner-display").style.color = "#facc15";
+      }
+
       if (msg.type === "RESET") {
         document.getElementById("winner-display").textContent = "BUZZERS READY";
+        document.getElementById("winner-display").style.color = "#fff";
       }
     };
 
@@ -138,7 +149,14 @@
   }
 
   function resetBuzzers() {
-    ws.send(JSON.stringify({ type: "RESET_BUZZERS" }));
+    // 1. Instantly update host UI without waiting for network lag
+    document.getElementById("winner-display").textContent = "BUZZERS READY";
+    document.getElementById("winner-display").style.color = "#fff";
+
+    // 2. Notify Cloudflare and all connected phones
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "RESET_BUZZERS" }));
+    }
   }
 </script>
 </body>
