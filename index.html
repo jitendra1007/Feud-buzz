@@ -18,6 +18,15 @@
     .waiting { background:#f59e0b; color:#000; }
     .winner-banner { font-size:42px; color:#facc15; font-weight:900; margin:20px 0; animation: pulse 0.5s infinite alternate; }
     @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.05); } }
+    /* Reconnect QR Modal */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0, 0, 0, 0.85);
+      display: flex; justify-content: center; align-items: center; z-index: 1000;
+    }
+    .modal-content {
+      background: #0f223d; border-radius: 12px; padding: 24px;
+      max-width: 600px; width: 90%; border: 1px solid #334e68;
+    }
   </style>
 </head>
 <body>
@@ -58,7 +67,26 @@
     <div>
       <button id="arm-btn" onclick="armBuzzers()" style="background:#22c55e;">ARM BUZZERS</button>
       <button onclick="resetBuzzers()" style="background:#ef4444;">RESET</button>
+      <button onclick="openQrModal()" style="background:#8b5cf6;">RECONNECT QR</button>
       <button onclick="goHome()" style="background:#64748b;">HOME</button>
+    </div>
+  </div>
+
+  <!-- Reconnect QR Codes Modal (Hidden by default) -->
+  <div id="qr-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+      <h2>Scan to Reconnect Phone</h2>
+      <div class="grid">
+        <div class="team-panel">
+          <h3 id="modal-t0-title">Team 1</h3>
+          <div id="modal-qr-0" class="qr-box"></div>
+        </div>
+        <div class="team-panel">
+          <h3 id="modal-t1-title">Team 2</h3>
+          <div id="modal-qr-1" class="qr-box"></div>
+        </div>
+      </div>
+      <button onclick="closeQrModal()" style="background:#3b82f6;">Close</button>
     </div>
   </div>
 
@@ -113,14 +141,17 @@
     // NEW LINE (Works both locally and on GitHub Pages subpaths):
     const cleanPath = window.location.pathname.replace(/\/index\.html$|\/$/, "");
     const basePhoneUrl = window.location.origin + cleanPath + "/buzzer.html";
-    new QRCode(document.getElementById("qr-0"), {
-      text: `${basePhoneUrl}?room=${roomCode}&team=0&name=${encodeURIComponent(teams[0])}&color=%233b82f6`,
-      width: 150, height: 150
-    });
-    new QRCode(document.getElementById("qr-1"), {
-      text: `${basePhoneUrl}?room=${roomCode}&team=1&name=${encodeURIComponent(teams[1])}&color=%23ef4444`,
-      width: 150, height: 150
-    });
+    const team0Url = `${basePhoneUrl}?room=${roomCode}&team=0&name=${encodeURIComponent(teams[0])}&color=%233b82f6`;
+    const team1Url = `${basePhoneUrl}?room=${roomCode}&team=1&name=${encodeURIComponent(teams[1])}&color=%23ef4444`;
+    // Lobby QRs
+    new QRCode(document.getElementById("qr-0"), { text: team0Url, width: 150, height: 150 });
+    new QRCode(document.getElementById("qr-1"), { text: team1Url, width: 150, height: 150 });
+
+    // Modal QRs
+    document.getElementById("modal-t0-title").textContent = teams[0];
+    document.getElementById("modal-t1-title").textContent = teams[1];
+    new QRCode(document.getElementById("modal-qr-0"), { text: team0Url, width: 140, height: 140 });
+    new QRCode(document.getElementById("modal-qr-1"), { text: team1Url, width: 140, height: 140 });
   }
 
   function updateLobbyState(connected) {
@@ -173,31 +204,36 @@
       ws.send(JSON.stringify({ type: "RESET_BUZZERS" }));
     }
   }
-  function goHome() {
-    // 1. Reset buzzers on connected devices
-    resetBuzzers();
+  function openQrModal() {
+    document.getElementById("qr-modal").classList.remove("hidden");
+  }
 
-    // 2. Disconnect previous WebSocket session so new room can start cleanly
+  function closeQrModal() {
+    document.getElementById("qr-modal").classList.add("hidden");
+  }
+  function goHome() {
+    resetBuzzers();
+    closeQrModal();
+
     if (ws) {
       ws.close();
       ws = null;
     }
 
-    // 3. Clear existing QR code containers so new ones don't stack up
+    // Clear all QR code containers
     document.getElementById("qr-0").innerHTML = "";
     document.getElementById("qr-1").innerHTML = "";
+    document.getElementById("modal-qr-0").innerHTML = "";
+    document.getElementById("modal-qr-1").innerHTML = "";
 
-    // 4. Reset Start Game button state
     const playBtn = document.getElementById("start-game-btn");
     playBtn.disabled = true;
     playBtn.style.opacity = "0.5";
     playBtn.style.background = "#3b82f6";
     playBtn.textContent = "Waiting for 2 Phones";
 
-    // 5. Generate a fresh room code for next game
     roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
 
-    // 6. Switch back to the setup view
     document.getElementById("game-view").classList.add("hidden");
     document.getElementById("lobby-view").classList.add("hidden");
     document.getElementById("setup-view").classList.remove("hidden");
