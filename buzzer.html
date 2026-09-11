@@ -32,11 +32,32 @@
 <script>
   const BACKEND_HOST = "feud-backend.feud-buzz-app.workers.dev";
   const params = new URLSearchParams(window.location.search);
-  const room = (params.get("room") || "").toUpperCase();
-  const team = params.get("team") || "0";
-  const name = params.get("name") || `Team ${parseInt(team) + 1}`;
-  const color = params.get("color") || "#3b82f6";
 
+  // 1. Session persistence: Read from URL first, fall back to localStorage
+  let room = (params.get("room") || localStorage.getItem("feud_room") || "").toUpperCase();
+  let team = params.get("team") || localStorage.getItem("feud_team") || "0";
+  let name = params.get("name") || localStorage.getItem("feud_name") || `Team ${parseInt(team) + 1}`;
+  let color = params.get("color") || localStorage.getItem("feud_color") || "#3b82f6";
+
+  // If newly joined with valid room param, cache it for re-entry
+  if (params.get("room")) {
+    localStorage.setItem("feud_room", room);
+    localStorage.setItem("feud_team", team);
+    localStorage.setItem("feud_name", name);
+    localStorage.setItem("feud_color", color);
+  }
+
+  // Guard: If opened directly with no saved room session, prompt to scan
+  if (!room) {
+    document.body.innerHTML = `
+      <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:100dvh;text-align:center;padding:20px;">
+        <h2>No Active Session</h2>
+        <p>Scan your team QR code from the host screen to join.</p>
+      </div>`;
+    throw new Error("No room specified");
+  }
+
+  // UI Setup
   document.documentElement.style.setProperty("--team-color", color);
   document.getElementById("room-lbl").textContent = room;
   document.getElementById("team-title").textContent = name;
@@ -51,54 +72,91 @@
     navigator.wakeLock.request('screen').catch(() => {});
   }
 
-  const ws = new WebSocket(`wss://${BACKEND_HOST}/?room=${room}`);
+  // 2. Resilient WebSocket Manager
+  let ws = null;
+  let reconnectTimeout = null;
 
-  ws.onopen = () => {
-    connLbl.textContent = "Online";
-    status.textContent = "Connected. Waiting for host to arm...";
-    ws.send(JSON.stringify({ type: "REGISTER_PLAYER", team, name }));
-  };
-
-  ws.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-
-    if (data.type === "ARMED") {
-      btn.disabled = false;
-      btn.className = "armed";
-      btn.textContent = "BUZZ!";
-      status.textContent = "TAP NOW!";
-      navigator.vibrate?.(60);
+  function connect() {
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+      return;
     }
 
-    if (data.type === "LOCKED") {
-      btn.disabled = true;
-      btn.classList.remove("armed");
-      if (data.winner.team === team) {
-        btn.classList.add("winner");
-        btn.textContent = "YOU BUZZED!";
-        status.textContent = "You got in first! Answer now.";
-        navigator.vibrate?.([100, 50, 100]);
-      } else {
-        btn.textContent = "LOCKED OUT";
-        status.textContent = `${data.winner.name} buzzed first!`;
+    clearTimeout(reconnectTimeout);
+    connLbl.textContent = "Reconnecting...";
+    ws = new WebSocket(`wss://${BACKEND_HOST}/?room=${room}`);
+
+    ws.onopen = () => {
+      connLbl.textContent = "Online";
+      status.textContent = "Connected. Waiting for host...";
+      ws.send(JSON.stringify({ type: "REGISTER_PLAYER", team, name }));
+    };
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+
+      if (data.type === "ARMED") {
+        btn.disabled = false;
+        btn.className = "armed";
+        btn.textContent = "BUZZ!";
+        status.textContent = "TAP NOW!";
+        navigator.vibrate?.(60);
+      }
+
+      if (data.type === "LOCKED") {
+        btn.disabled = true;
+        btn.classList.remove("armed");
+        if (data.winner.team === team) {
+          btn.classList.add("winner");
+          btn.textContent = "YOU BUZZED!";
+          status.textContent = "You got in first! Answer now.";
+          navigator.vibrate?.([100, 50, 100]);
+        } else {
+          btn.textContent = "LOCKED OUT";
+          status.textContent = `${data.winner.name} buzzed first!`;
+        }
+      }
+
+      if (data.type === "RESET") {
+        btn.disabled = true;
+        btn.className = "";
+        btn.textContent = "STANDBY";
+        status.textContent = "Waiting for next question...";
+      }
+    };
+
+    ws.onclose = () => {
+      connLbl.textContent = "Offline";
+      status.textContent = "Disconnected. Trying to reconnect...";
+      reconnectTimeout = setTimeout(connect, 2000);
+    };
+
+    ws.onerror = () => {
+      ws.close();
+    };
+  }
+
+  // 3. Re-engage on Phone Tab Switching / App Unlocking
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      connect();
+      if ('wakeLock' in navigator) {
+        navigator.wakeLock.request('screen').catch(() => {});
       }
     }
+  });
+  window.addEventListener("pageshow", connect);
+  window.addEventListener("online", connect);
 
-    if (data.type === "RESET") {
-      btn.disabled = true;
-      btn.className = "";
-      btn.textContent = "STANDBY";
-      status.textContent = "Waiting for next question...";
-    }
-  };
-
-  // Pointerdown removes 300ms mobile tap delay
+  // 4. Instant Touch Tap Handler
   btn.addEventListener("pointerdown", (e) => {
     e.preventDefault();
-    if (!btn.disabled && ws.readyState === WebSocket.OPEN) {
+    if (!btn.disabled && ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: "BUZZ", team }));
     }
   });
+
+  // Initial connection
+  connect();
 </script>
 </body>
 </html>
