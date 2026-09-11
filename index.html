@@ -146,12 +146,6 @@
     // Lobby QRs
     new QRCode(document.getElementById("qr-0"), { text: team0Url, width: 150, height: 150 });
     new QRCode(document.getElementById("qr-1"), { text: team1Url, width: 150, height: 150 });
-
-    // Modal QRs
-    document.getElementById("modal-t0-title").textContent = teams[0];
-    document.getElementById("modal-t1-title").textContent = teams[1];
-    new QRCode(document.getElementById("modal-qr-0"), { text: team0Url, width: 140, height: 140 });
-    new QRCode(document.getElementById("modal-qr-1"), { text: team1Url, width: 140, height: 140 });
   }
 
   function updateLobbyState(connected) {
@@ -205,12 +199,34 @@
     }
   }
   function openQrModal() {
-    document.getElementById("qr-modal").classList.remove("hidden");
+    const modal = document.getElementById("qr-modal");
+    modal.classList.remove("hidden");
+
+    // Set team titles
+    document.getElementById("modal-t0-title").textContent = teams[0];
+    document.getElementById("modal-t1-title").textContent = teams[1];
+
+    // Clear previous QR contents
+    const qrBox0 = document.getElementById("modal-qr-0");
+    const qrBox1 = document.getElementById("modal-qr-1");
+    qrBox0.innerHTML = "";
+    qrBox1.innerHTML = "";
+
+    // Generate URLs
+    const cleanPath = window.location.pathname.replace(/\/index\.html$|\/$/, "");
+    const basePhoneUrl = window.location.origin + cleanPath + "/buzzer.html";
+    const team0Url = `${basePhoneUrl}?room=${roomCode}&team=0&name=${encodeURIComponent(teams[0])}&color=%233b82f6`;
+    const team1Url = `${basePhoneUrl}?room=${roomCode}&team=1&name=${encodeURIComponent(teams[1])}&color=%23ef4444`;
+
+    // Render QRs now that the modal is visible
+    new QRCode(qrBox0, { text: team0Url, width: 140, height: 140 });
+    new QRCode(qrBox1, { text: team1Url, width: 140, height: 140 });
   }
 
   function closeQrModal() {
     document.getElementById("qr-modal").classList.add("hidden");
   }
+  
   function goHome() {
     resetBuzzers();
     closeQrModal();
