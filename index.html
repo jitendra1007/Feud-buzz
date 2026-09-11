@@ -58,6 +58,7 @@
     <div>
       <button id="arm-btn" onclick="armBuzzers()" style="background:#22c55e;">ARM BUZZERS</button>
       <button onclick="resetBuzzers()" style="background:#ef4444;">RESET</button>
+      <button onclick="goHome()" style="background:#64748b;">HOME</button>
     </div>
   </div>
 
@@ -96,7 +97,9 @@
       }
 
       if (msg.type === "LOCKED") {
-        document.getElementById("winner-display").textContent = `${msg.winner.name} BUZZED FIRST!`;
+        // Look up custom name in teams array by team index, fallback to message payload
+        const winnerTeamName = teams[msg.winner.team] || msg.winner.name;
+        document.getElementById("winner-display").textContent = `${winnerTeamName.toUpperCase()} BUZZED FIRST!`;
         document.getElementById("winner-display").style.color = "#facc15";
       }
 
@@ -131,11 +134,23 @@
     document.getElementById("status-1").textContent = t1 ? "Connected" : "Waiting for phone...";
 
     const playBtn = document.getElementById("start-game-btn");
-    if (t0 && t1) {
+    const connectedCount = (t0 ? 1 : 0) + (t1 ? 1 : 0);
+
+    if (connectedCount === 2) {
       playBtn.disabled = false;
       playBtn.style.opacity = "1";
       playBtn.style.background = "#22c55e";
       playBtn.textContent = "PLAY GAME";
+    } else if (connectedCount === 1) {
+      playBtn.disabled = true;
+      playBtn.style.opacity = "0.5";
+      playBtn.style.background = "#3b82f6";
+      playBtn.textContent = "Waiting for 1 Phone";
+    } else {
+      playBtn.disabled = true;
+      playBtn.style.opacity = "0.5";
+      playBtn.style.background = "#3b82f6";
+      playBtn.textContent = "Waiting for 2 Phones";
     }
   }
 
@@ -157,6 +172,35 @@
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: "RESET_BUZZERS" }));
     }
+  }
+  function goHome() {
+    // 1. Reset buzzers on connected devices
+    resetBuzzers();
+
+    // 2. Disconnect previous WebSocket session so new room can start cleanly
+    if (ws) {
+      ws.close();
+      ws = null;
+    }
+
+    // 3. Clear existing QR code containers so new ones don't stack up
+    document.getElementById("qr-0").innerHTML = "";
+    document.getElementById("qr-1").innerHTML = "";
+
+    // 4. Reset Start Game button state
+    const playBtn = document.getElementById("start-game-btn");
+    playBtn.disabled = true;
+    playBtn.style.opacity = "0.5";
+    playBtn.style.background = "#3b82f6";
+    playBtn.textContent = "Waiting for 2 Phones";
+
+    // 5. Generate a fresh room code for next game
+    roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
+
+    // 6. Switch back to the setup view
+    document.getElementById("game-view").classList.add("hidden");
+    document.getElementById("lobby-view").classList.add("hidden");
+    document.getElementById("setup-view").classList.remove("hidden");
   }
 </script>
 </body>
