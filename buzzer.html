@@ -14,6 +14,12 @@
       flex:1; border:none; border-radius:24px; font-size:48px; font-weight:900;
       color:#fff; background:#1e293b; opacity:0.5; transition:0.1s;
     }
+    #buzz-btn.countdown { 
+      opacity: 0.9; 
+      background: #eab308; 
+      color: #000; 
+      font-size: 64px; 
+    }
     #buzz-btn.armed { opacity:1; background:var(--team-color, #3b82f6); box-shadow:0 0 50px var(--team-color, #3b82f6); }
     #buzz-btn.winner { background:#22c55e !important; }
   </style>
@@ -75,7 +81,7 @@
   // 2. Resilient WebSocket Manager
   let ws = null;
   let reconnectTimeout = null;
-
+  let countdownTimer = null;
   function connect() {
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
       return;
@@ -92,26 +98,45 @@
     };
 
     ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
+      const data = JSON.parse(event.data); // KEEP THIS LINE
 
-    if (data.type === "ARMED") {
-      const delay = Math.max(0, data.triggerAt - Date.now());
+      // 1. Countdown tick-down
+      if (data.type === "START_COUNTDOWN") {
+        clearInterval(countdownTimer);
+        btn.disabled = true;
+        btn.className = "countdown";
+        status.textContent = "GET READY!";
 
-      // Show "Get Ready..." during the 300ms network buffer
-      status.textContent = "GET READY...";
-      btn.textContent = "READY...";
+        let count = 3;
+        btn.textContent = count;
+        navigator.vibrate?.(40);
 
-      setTimeout(() => {
+        countdownTimer = setInterval(() => {
+          count--;
+          if (count > 0) {
+            btn.textContent = count;
+            navigator.vibrate?.(40);
+          } else {
+            clearInterval(countdownTimer);
+          }
+        }, 1000);
+      }
+
+      // 2. Unlock buzzer
+      if (data.type === "ARMED") {
+        clearInterval(countdownTimer);
         btn.disabled = false;
         btn.className = "armed";
         btn.textContent = "BUZZ!";
         status.textContent = "TAP NOW!";
-        navigator.vibrate?.(60);
-      }, delay);
-    }
+        navigator.vibrate?.([80, 40, 80]);
+      }
+
+      // 3. Lock out
       if (data.type === "LOCKED") {
+        clearInterval(countdownTimer);
         btn.disabled = true;
-        btn.classList.remove("armed");
+        btn.classList.remove("armed", "countdown");
         if (data.winner.team === team) {
           btn.classList.add("winner");
           btn.textContent = "YOU BUZZED!";
@@ -123,7 +148,9 @@
         }
       }
 
+      // 4. Reset
       if (data.type === "RESET") {
+        clearInterval(countdownTimer);
         btn.disabled = true;
         btn.className = "";
         btn.textContent = "STANDBY";
