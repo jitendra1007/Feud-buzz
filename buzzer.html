@@ -39,28 +39,31 @@
   const BACKEND_HOST = "feud-backend.feud-buzz-app.workers.dev";
   const params = new URLSearchParams(window.location.search);
 
-  // 1. Session persistence: Read from URL first, fall back to localStorage
-  let room = (params.get("room") || localStorage.getItem("feud_room") || "").toUpperCase();
-  let team = params.get("team") || localStorage.getItem("feud_team") || "0";
-  let name = params.get("name") || localStorage.getItem("feud_name") || `Team ${parseInt(team) + 1}`;
-  let color = params.get("color") || localStorage.getItem("feud_color") || "#3b82f6";
+  // If a room parameter is present in the URL, FORCE overwrite localStorage
+  let room = params.get("room");
+  let team = params.get("team");
+  let name = params.get("name");
+  let color = params.get("color");
 
-  // If newly joined with valid room param, cache it for re-entry
-  if (params.get("room")) {
+  if (room) {
+    room = room.toUpperCase();
     localStorage.setItem("feud_room", room);
-    localStorage.setItem("feud_team", team);
-    localStorage.setItem("feud_name", name);
-    localStorage.setItem("feud_color", color);
+    if (team !== null) localStorage.setItem("feud_team", team);
+    if (name) localStorage.setItem("feud_name", name);
+    if (color) localStorage.setItem("feud_color", color);
+  } else {
+    // Fall back to storage only if URL had no parameters
+    room = (localStorage.getItem("feud_room") || "").toUpperCase();
+    team = localStorage.getItem("feud_team") || "0";
+    name = localStorage.getItem("feud_name") || `Team ${parseInt(team) + 1}`;
+    color = localStorage.getItem("feud_color") || "#3b82f6";
   }
 
-  // Guard: If opened directly with no saved room session, prompt to scan
-  if (!room) {
-    document.body.innerHTML = `
-      <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:100dvh;text-align:center;padding:20px;">
-        <h2>No Active Session</h2>
-        <p>Scan your team QR code from the host screen to join.</p>
-      </div>`;
-    throw new Error("No room specified");
+  // Guard: if no room anywhere, alert user
+  if (!room || room.length !== 4) {
+    document.getElementById("status-text").textContent = "Invalid or missing room code. Please scan QR again.";
+    document.getElementById("conn-lbl").textContent = "No Room";
+    throw new Error("Invalid room code");
   }
 
   // UI Setup
@@ -164,11 +167,11 @@
       reconnectTimeout = setTimeout(connect, 2000);
     };
 
-    ws.onerror = () => {
-      ws.close();
+    ws.onerror = (err) => {
+      console.error("WS Error:", err);
+      connLbl.textContent = "Error";
+      status.textContent = "Connection refused by server. Check room code.";
     };
-  }
-
   // 3. Re-engage on Phone Tab Switching / App Unlocking
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") {
