@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Feud Host Screen</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    body { margin:0; background:#071427; color:#fff; font-family:sans-serif; text-align:center; padding:20px; }
+    .card { background:#0f223d; border-radius:12px; max-width:800px; margin:20px auto; padding:24px; }
+    .hidden { display:none; }
+    input { font-size:18px; padding:10px; margin:8px; border-radius:6px; border:1px solid #334e68; }
+    button { font-size:20px; font-weight:bold; padding:12px 24px; border-radius:8px; border:none; cursor:pointer; background:#3b82f6; color:#fff; margin:10px; }
+    .grid { display:flex; justify-content:space-around; margin:20px 0; }
+    .team-panel { border:2px solid #334e68; border-radius:10px; padding:16px; width:40%; }
+    .qr-box { background:#fff; padding:10px; border-radius:8px; display:inline-block; margin:10px 0; }
+    .status-badge { font-weight:bold; padding:6px 12px; border-radius:6px; }
+    .connected { background:#22c55e; color:#fff; }
+    .waiting { background:#f59e0b; color:#000; }
+    .winner-banner { font-size:42px; color:#facc15; font-weight:900; margin:20px 0; animation: pulse 0.5s infinite alternate; }
+    @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.05); } }
+  </style>
+</head>
+<body>
+
+  <!-- STEP A: Team Setup -->
+  <div id="setup-view" class="card">
+    <h2>Friendly Feud Setup</h2>
+    <div><input id="team0-input" placeholder="Team 1 Name" value="LIONS" /></div>
+    <div><input id="team1-input" placeholder="Team 2 Name" value="TIGERS" /></div>
+    <button onclick="createRoom()">Create Room</button>
+  </div>
+
+  <!-- STEP B: Pairing & Lobby -->
+  <div id="lobby-view" class="card hidden">
+    <h1>Room Code: <span id="room-code-display" style="color:#facc15;"></span></h1>
+    <p>Scan your team QR code on your phone or go to the join link.</p>
+    
+    <div class="grid">
+      <div class="team-panel">
+        <h3 id="t0-title">Team 1</h3>
+        <div id="qr-0" class="qr-box"></div>
+        <div id="status-0" class="status-badge waiting">Waiting for phone...</div>
+      </div>
+      <div class="team-panel">
+        <h3 id="t1-title">Team 2</h3>
+        <div id="qr-1" class="qr-box"></div>
+        <div id="status-1" class="status-badge waiting">Waiting for phone...</div>
+      </div>
+    </div>
+
+    <button id="start-game-btn" disabled onclick="enterGame()" style="opacity:0.5;">Waiting for 2 Phones</button>
+  </div>
+
+  <!-- STEP C: Active Game Board -->
+  <div id="game-view" class="card hidden">
+    <h2>Game Board</h2>
+    <div id="winner-display" class="winner-banner">BUZZERS READY</div>
+    <div>
+      <button id="arm-btn" onclick="armBuzzers()" style="background:#22c55e;">ARM BUZZERS</button>
+      <button onclick="resetBuzzers()" style="background:#ef4444;">RESET</button>
+    </div>
+  </div>
+
+<script>
+  const BACKEND_HOST = "feud-backend.feud-buzz-app.workers.dev";
+  let roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
+  let ws = null;
+  let teams = ["LIONS", "TIGERS"];
+
+  function createRoom() {
+    teams[0] = document.getElementById("team0-input").value.trim() || "LIONS";
+    teams[1] = document.getElementById("team1-input").value.trim() || "TIGERS";
+
+    document.getElementById("setup-view").classList.add("hidden");
+    document.getElementById("lobby-view").classList.remove("hidden");
+    document.getElementById("room-code-display").textContent = roomCode;
+    document.getElementById("t0-title").textContent = teams[0];
+    document.getElementById("t1-title").textContent = teams[1];
+
+    // Connect Host to Cloudflare WebSocket
+    ws = new WebSocket(`wss://${BACKEND_HOST}/?room=${roomCode}`);
+    ws.onopen = () => ws.send(JSON.stringify({ type: "REGISTER_HOST" }));
+
+    ws.onmessage = (event) => {
+      const msg = JSON.parse(event.data);
+      if (msg.type === "ROOM_STATE") updateLobbyState(msg.connectedTeams);
+      if (msg.type === "LOCKED") {
+        document.getElementById("winner-display").textContent = `${msg.winner.name} BUZZED FIRST!`;
+      }
+      if (msg.type === "ARMED") {
+        document.getElementById("winner-display").textContent = "BUZZERS ARMED!";
+      }
+      if (msg.type === "RESET") {
+        document.getElementById("winner-display").textContent = "BUZZERS READY";
+      }
+    };
+
+    // Render QRs pointing to the phone buzzer client
+    const basePhoneUrl = window.location.origin + "/buzzer.html";
+    new QRCode(document.getElementById("qr-0"), {
+      text: `${basePhoneUrl}?room=${roomCode}&team=0&name=${encodeURIComponent(teams[0])}&color=%233b82f6`,
+      width: 150, height: 150
+    });
+    new QRCode(document.getElementById("qr-1"), {
+      text: `${basePhoneUrl}?room=${roomCode}&team=1&name=${encodeURIComponent(teams[1])}&color=%23ef4444`,
+      width: 150, height: 150
+    });
+  }
+
+  function updateLobbyState(connected) {
+    const t0 = connected.includes("0");
+    const t1 = connected.includes("1");
+
+    document.getElementById("status-0").className = "status-badge " + (t0 ? "connected" : "waiting");
+    document.getElementById("status-0").textContent = t0 ? "Connected" : "Waiting for phone...";
+
+    document.getElementById("status-1").className = "status-badge " + (t1 ? "connected" : "waiting");
+    document.getElementById("status-1").textContent = t1 ? "Connected" : "Waiting for phone...";
+
+    const playBtn = document.getElementById("start-game-btn");
+    if (t0 && t1) {
+      playBtn.disabled = false;
+      playBtn.style.opacity = "1";
+      playBtn.style.background = "#22c55e";
+      playBtn.textContent = "PLAY GAME";
+    }
+  }
+
+  function enterGame() {
+    document.getElementById("lobby-view").classList.add("hidden");
+    document.getElementById("game-view").classList.remove("hidden");
+  }
+
+  function armBuzzers() {
+    ws.send(JSON.stringify({ type: "ARM_BUZZERS" }));
+  }
+
+  function resetBuzzers() {
+    ws.send(JSON.stringify({ type: "RESET_BUZZERS" }));
+  }
+</script>
+</body>
+</html>
