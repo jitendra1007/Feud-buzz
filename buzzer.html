@@ -94,14 +94,21 @@
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
 
-      if (data.type === "ARMED") {
+    if (data.type === "ARMED") {
+      const delay = Math.max(0, data.triggerAt - Date.now());
+
+      // Show "Get Ready..." during the 300ms network buffer
+      status.textContent = "GET READY...";
+      btn.textContent = "READY...";
+
+      setTimeout(() => {
         btn.disabled = false;
         btn.className = "armed";
         btn.textContent = "BUZZ!";
         status.textContent = "TAP NOW!";
         navigator.vibrate?.(60);
-      }
-
+      }, delay);
+    }
       if (data.type === "LOCKED") {
         btn.disabled = true;
         btn.classList.remove("armed");
