@@ -96,7 +96,9 @@
     };
 
     // Render QRs pointing to the phone buzzer client
-    const basePhoneUrl = window.location.origin + "/buzzer.html";
+    // NEW LINE (Works both locally and on GitHub Pages subpaths):
+    const cleanPath = window.location.pathname.replace(/\/index\.html$|\/$/, "");
+    const basePhoneUrl = window.location.origin + cleanPath + "/buzzer.html";
     new QRCode(document.getElementById("qr-0"), {
       text: `${basePhoneUrl}?room=${roomCode}&team=0&name=${encodeURIComponent(teams[0])}&color=%233b82f6`,
       width: 150, height: 150
