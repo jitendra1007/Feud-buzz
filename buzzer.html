@@ -103,28 +103,6 @@
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data); // KEEP THIS LINE
 
-      // 1. Countdown tick-down
-      if (data.type === "START_COUNTDOWN") {
-        clearInterval(countdownTimer);
-        btn.disabled = true;
-        btn.className = "countdown";
-        status.textContent = "GET READY!";
-
-        let count = 3;
-        btn.textContent = count;
-        navigator.vibrate?.(40);
-
-        countdownTimer = setInterval(() => {
-          count--;
-          if (count > 0) {
-            btn.textContent = count;
-            navigator.vibrate?.(40);
-          } else {
-            clearInterval(countdownTimer);
-          }
-        }, 1000);
-      }
-
       // 2. Unlock buzzer
       if (data.type === "ARMED") {
         clearInterval(countdownTimer);
