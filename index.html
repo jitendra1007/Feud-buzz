@@ -114,11 +114,6 @@
     ws.onmessage = (event) => {
       const msg = JSON.parse(event.data);
       if (msg.type === "ROOM_STATE") updateLobbyState(msg.connectedTeams);
-      
-      if (msg.type === "START_COUNTDOWN") {
-        document.getElementById("winner-display").textContent = "COUNTDOWN STARTED...";
-        document.getElementById("winner-display").style.color = "#eab308";
-      }
 
       if (msg.type === "ARMED") {
         document.getElementById("winner-display").textContent = "BUZZERS ARMED!";
