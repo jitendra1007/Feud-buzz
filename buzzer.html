@@ -86,6 +86,8 @@
   let reconnectTimeout = null;
   let countdownTimer = null;
   let pingTimer = null;
+  let retryDelay = 1000;      // Initial delay: 1 second
+  const MAX_RETRY_DELAY = 15000; // Cap delay at 15 seconds
   function connect() {
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
       return;
@@ -97,12 +99,13 @@
     ws = new WebSocket(`wss://${BACKEND_HOST}/?room=${room}`);
 
     ws.onopen = () => {
+      retryDelay = 1000; // Reset backoff on successful connection
       connLbl.textContent = "Online";
       status.textContent = "Connected. Waiting for host...";
       ws.send(JSON.stringify({ type: "REGISTER_PLAYER", team, name }));
       clearInterval(pingTimer);
     };
-
+    
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.type === "PONG") {
@@ -175,8 +178,13 @@
     ws.onclose = () => {
       clearInterval(pingTimer);
       connLbl.textContent = "Offline";
-      status.textContent = "Disconnected. Trying to reconnect...";
-      reconnectTimeout = setTimeout(connect, 500);
+      status.textContent = `Disconnected. Retrying in ${(retryDelay / 1000).toFixed(0)}s...`;
+
+      clearTimeout(reconnectTimeout);
+      reconnectTimeout = setTimeout(connect, retryDelay);
+
+      // Double the wait time for subsequent failures, capped at 15s
+      retryDelay = Math.min(retryDelay * 2, MAX_RETRY_DELAY);
     };
 
     ws.onerror = (err) => {
