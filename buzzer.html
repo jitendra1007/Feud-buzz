@@ -107,11 +107,14 @@
         if (ws && ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: "PING" }));
         }
-      }, 10000);
+      }, 7000);
     };
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
+      if (data.type === "PONG") {
+      return; 
+      }
 
       // Restore active state if reconnecting mid-game
       if (data.type === "ROOM_STATE") {
