@@ -100,20 +100,13 @@
       connLbl.textContent = "Online";
       status.textContent = "Connected. Waiting for host...";
       ws.send(JSON.stringify({ type: "REGISTER_PLAYER", team, name }));
-
-      // 10-second heartbeat to keep mobile radio & socket active
       clearInterval(pingTimer);
-      pingTimer = setInterval(() => {
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: "PING" }));
-        }
-      }, 7000);
     };
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.type === "PONG") {
-      return; 
+        return; 
       }
 
       // Restore active state if reconnecting mid-game
@@ -123,6 +116,14 @@
           btn.className = "armed";
           btn.textContent = "BUZZ!";
           status.textContent = "TAP NOW!";
+
+          // Start pinging while armed
+          clearInterval(pingTimer);
+          pingTimer = setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: "PING" }));
+            }
+          }, 7000);
         }
       }
 
@@ -133,11 +134,20 @@
         btn.textContent = "BUZZ!";
         status.textContent = "TAP NOW!";
         navigator.vibrate?.([80, 40, 80]);
+
+        // Start pinging while armed
+        clearInterval(pingTimer);
+        pingTimer = setInterval(() => {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: "PING" }));
+          }
+        }, 7000);
       }
 
       // Lock out
       if (data.type === "LOCKED") {
         clearInterval(countdownTimer);
+        clearInterval(pingTimer); // Stop pinging to allow backend to hibernate
         btn.disabled = true;
         btn.classList.remove("armed", "countdown");
         if (data.winner.team === team) {
@@ -154,6 +164,7 @@
       // Reset
       if (data.type === "RESET") {
         clearInterval(countdownTimer);
+        clearInterval(pingTimer); // Stop pinging to allow backend to hibernate
         btn.disabled = true;
         btn.className = "";
         btn.textContent = "STANDBY";
