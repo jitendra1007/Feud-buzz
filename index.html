@@ -131,6 +131,7 @@
   let roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
   let ws = null;
   let teams = ["LIONS", "TIGERS"];
+  let hostReconnectTimer = null;
   let hostRetryDelay = 1000;      // Start at 1s
   const MAX_HOST_DELAY = 15000;   // Cap at 15s
 
@@ -154,7 +155,7 @@
 
   function manualReconnect() {
     clearTimeout(hostReconnectTimer);
-    hostRetryDelay = 1000; // Reset delay when host manually forces a reconnect
+    hostRetryDelay = 1000;
     if (ws) {
       try { ws.close(); } catch(e) {}
       ws = null;
@@ -162,7 +163,6 @@
     updateHostStatus("waiting", "Reconnecting...");
     connectHostWs();
   }
-
   function connectHostWs() {
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
       return;
@@ -173,7 +173,7 @@
     ws = new WebSocket(`wss://${BACKEND_HOST}/?room=${roomCode}`);
 
     ws.onopen = () => {
-      hostRetryDelay = 1000; // Reset delay on successful connection
+      hostRetryDelay = 1000; // Reset backoff delay on successful connection
       updateHostStatus("connected", "Host Online");
       ws.send(JSON.stringify({ type: "REGISTER_HOST" }));
     };
@@ -206,7 +206,7 @@
       clearTimeout(hostReconnectTimer);
       hostReconnectTimer = setTimeout(connectHostWs, hostRetryDelay);
 
-      // Exponential backoff capped at 15s
+      // Double the delay for the next attempt, capped at 15s
       hostRetryDelay = Math.min(hostRetryDelay * 2, MAX_HOST_DELAY);
     };
 
