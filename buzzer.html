@@ -91,6 +91,7 @@
     }
 
     clearTimeout(reconnectTimeout);
+    clearInterval(pingTimer);
     connLbl.textContent = "Reconnecting...";
     ws = new WebSocket(`wss://${BACKEND_HOST}/?room=${room}`);
 
@@ -98,12 +99,30 @@
       connLbl.textContent = "Online";
       status.textContent = "Connected. Waiting for host...";
       ws.send(JSON.stringify({ type: "REGISTER_PLAYER", team, name }));
+
+      // 10-second heartbeat to keep mobile radio & socket active
+      clearInterval(pingTimer);
+      pingTimer = setInterval(() => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "PING" }));
+        }
+      }, 10000);
     };
 
     ws.onmessage = (event) => {
-      const data = JSON.parse(event.data); // KEEP THIS LINE
+      const data = JSON.parse(event.data);
 
-      // 2. Unlock buzzer
+      // Restore active state if reconnecting mid-game
+      if (data.type === "ROOM_STATE") {
+        if (data.isArmed && !data.winner) {
+          btn.disabled = false;
+          btn.className = "armed";
+          btn.textContent = "BUZZ!";
+          status.textContent = "TAP NOW!";
+        }
+      }
+
+      // Unlock buzzer
       if (data.type === "ARMED") {
         btn.disabled = false;
         btn.className = "armed";
@@ -111,7 +130,8 @@
         status.textContent = "TAP NOW!";
         navigator.vibrate?.([80, 40, 80]);
       }
-      // 3. Lock out
+
+      // Lock out
       if (data.type === "LOCKED") {
         clearInterval(countdownTimer);
         btn.disabled = true;
@@ -127,7 +147,7 @@
         }
       }
 
-      // 4. Reset
+      // Reset
       if (data.type === "RESET") {
         clearInterval(countdownTimer);
         btn.disabled = true;
@@ -138,9 +158,10 @@
     };
 
     ws.onclose = () => {
+      clearInterval(pingTimer);
       connLbl.textContent = "Offline";
       status.textContent = "Disconnected. Trying to reconnect...";
-      reconnectTimeout = setTimeout(connect, 2000);
+      reconnectTimeout = setTimeout(connect, 500);
     };
 
     ws.onerror = (err) => {
