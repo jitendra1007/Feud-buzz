@@ -85,6 +85,7 @@
   let ws = null;
   let reconnectTimeout = null;
   let countdownTimer = null;
+  let pingTimer = null;
   function connect() {
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
       return;
